@@ -45,6 +45,17 @@ One-liner:
 curl -fsSL https://raw.githubusercontent.com/gevou/bd-tui/main/install.sh | bash
 ```
 
+To choose where the `bd-tui` executable goes, pass `--bin-dir` (or set
+`BD_TUI_BIN_DIR`):
+
+```bash
+curl -fsSL .../install.sh | bash -s -- --bin-dir ~/bin
+curl -fsSL .../install.sh | BD_TUI_BIN_DIR=~/bin bash
+```
+
+With a direct `uv`/`pipx` install, the same is controlled by their own settings
+(`UV_TOOL_BIN_DIR` for uv; `PIPX_BIN_DIR` / `PIPX_HOME` for pipx).
+
 ## Usage
 
 ```bash
