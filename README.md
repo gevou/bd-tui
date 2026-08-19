@@ -8,6 +8,19 @@ Built with [Textual](https://textual.textualize.io/). Talks to your beads databa
 entirely through the `bd` CLI, so it works with whatever backend `bd` is configured
 for.
 
+## Screenshots
+
+Kanban board — grouped by status, with epics and their subtasks:
+
+![bd-tui kanban board](docs/demo-board.png)
+
+Drill into a ticket (`f`) for a live detail pane plus a group **activity feed** of
+the latest comments (click an entry to jump to that ticket):
+
+![bd-tui drill-in view](docs/demo-drillin.png)
+
+_(Sample data.)_
+
 ## Requirements
 
 - Python **3.10+**
