@@ -12,7 +12,14 @@ from textual.containers import Horizontal, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, Footer, Header, Input, Static, TextArea
 
-from beads_tui.data import BeadsClient, BeadsError, Comment, Issue, format_timestamp
+from beads_tui.data import (
+    BeadsClient,
+    BeadsError,
+    Comment,
+    Issue,
+    format_timestamp,
+    is_db_open_error,
+)
 from beads_tui.model import (
     Filters,
     apply_filters,
@@ -241,7 +248,17 @@ class BoardApp(App):
         try:
             self.issues = self.client.list_issues()
         except BeadsError as exc:
-            self.notify(f"bd error: {exc}", severity="error", timeout=8)
+            if is_db_open_error(str(exc)):
+                self.notify(
+                    "Couldn't open a beads database here. If your DB isn't under "
+                    "the current directory, set BEADS_DIR to its .beads folder and "
+                    "restart bd-tui.",
+                    title="No beads database",
+                    severity="error",
+                    timeout=15,
+                )
+            else:
+                self.notify(f"bd error: {exc}", severity="error", timeout=8)
 
     @staticmethod
     def _signature(issues: list[Issue]) -> tuple:

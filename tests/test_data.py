@@ -11,6 +11,7 @@ from beads_tui.data import (
     Comment,
     Issue,
     format_timestamp,
+    is_db_open_error,
     parse_comments,
     parse_issues,
 )
@@ -104,6 +105,23 @@ def test_format_timestamp_handles_empty():
 
 def test_format_timestamp_passes_through_unparseable():
     assert format_timestamp("not a date") == "not a date"
+
+
+# --- is_db_open_error ------------------------------------------------------
+
+def test_is_db_open_error_detects_missing_database():
+    msg = ('failed to open database: embeddeddolt: init schema: '
+           'open /src/.beads/embeddeddolt/beads/.dolt/repo_state.json: '
+           'no such file or directory')
+    assert is_db_open_error(msg) is True
+
+
+def test_is_db_open_error_detects_no_config():
+    assert is_db_open_error("no beads configuration found in /src/.beads") is True
+
+
+def test_is_db_open_error_false_for_other_errors():
+    assert is_db_open_error("comments add: some validation error") is False
 
 
 # --- BeadsClient (uses an injected runner, the real external boundary) ----

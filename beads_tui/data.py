@@ -41,6 +41,17 @@ class BeadsError(Exception):
     """Raised when a bd invocation fails or returns unparseable output."""
 
 
+def is_db_open_error(message: str) -> bool:
+    """True when a bd error means it couldn't find/open a beads database
+    (usually a missing/misconfigured BEADS_DIR)."""
+    m = message.lower()
+    return (
+        "no beads configuration found" in m
+        or "failed to open database" in m
+        or "repo_state.json" in m
+    )
+
+
 @dataclass
 class Issue:
     id: str
