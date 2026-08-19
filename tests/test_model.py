@@ -9,6 +9,7 @@ from beads_tui.model import (
     comments_newest_first,
     has_relations,
     latest_comments,
+    natural_key,
     next_dimension,
     related_ids,
     subtree_ids,
@@ -86,6 +87,18 @@ def test_group_promotes_orphan_whose_parent_is_not_visible():
     issues = [mk("gv-4sb.1", status="in_progress", parent="gv-4sb")]  # parent absent
     cols = group_issues(issues, "status")
     assert [i.id for i in cols["in_progress"]] == ["gv-4sb.1"]
+
+
+def test_natural_key_sorts_numeric_suffixes_numerically():
+    ids = ["p.10", "p.2", "p.1", "p.11", "p.9"]
+    assert sorted(ids, key=natural_key) == ["p.1", "p.2", "p.9", "p.10", "p.11"]
+
+
+def test_children_map_orders_children_numerically():
+    issues = [mk("p"), mk("p.2", parent="p"), mk("p.10", parent="p"),
+              mk("p.1", parent="p"), mk("p.9", parent="p")]
+    cm = children_map(issues)
+    assert [c.id for c in cm["p"]] == ["p.1", "p.2", "p.9", "p.10"]
 
 
 def test_children_map_only_nests_children_with_a_visible_parent():

@@ -104,6 +104,8 @@ Notes:
   changed (no flicker), keeping your highlighted card across refreshes.
 - Closed and deferred issues are hidden by default; press `.` to reveal them.
 - Comments display **newest-first** in your **local timezone**.
+- Subtasks nest under their parent in **natural numeric id order** (so `.9` comes
+  before `.10`).
 
 ## Architecture
 

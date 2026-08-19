@@ -5,10 +5,21 @@ list so it can be unit-tested in isolation.
 """
 from __future__ import annotations
 
+import re
 from collections import OrderedDict, defaultdict
 from dataclasses import dataclass, field
 
 from beads_tui.data import Comment, Issue
+
+
+def natural_key(s: str) -> list:
+    """Sort key that orders embedded numbers numerically (so `.9` < `.10`).
+
+    Splits into alternating text/number chunks; digit runs compare as ints. The
+    alternation always starts with text, so aligned positions never mix str/int.
+    """
+    return [int(chunk) if chunk.isdigit() else chunk
+            for chunk in re.split(r"(\d+)", s)]
 
 DIMENSIONS = ["status", "priority", "label"]
 
@@ -68,7 +79,7 @@ def children_map(issues: list[Issue]) -> dict[str, list[Issue]]:
         if i.parent is not None and i.parent in ids:
             cm[i.parent].append(i)
     for kids in cm.values():
-        kids.sort(key=lambda x: x.id)
+        kids.sort(key=lambda x: natural_key(x.id))
     return dict(cm)
 
 
