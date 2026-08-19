@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bd-tui"
+version = "0.1.0"
+description = "A keyboard-driven kanban TUI for the beads (bd) issue tracker"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "George Voulgaris" }]
+keywords = ["beads", "bd", "kanban", "tui", "textual", "issue-tracker"]
+classifiers = [
+    "Environment :: Console",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Bug Tracking",
+]
+dependencies = ["textual>=8,<9"]
+
+[project.urls]
+Homepage = "https://github.com/gevou/bd-tui"
+Issues = "https://github.com/gevou/bd-tui/issues"
+
+[project.scripts]
+bd-tui = "beads_tui.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["beads_tui"]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=1"]

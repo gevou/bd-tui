@@ -1,0 +1,160 @@
+/* beads-tui styles */
+
+#main {
+    height: 1fr;
+}
+
+#board {
+    /* Alone (no drill-in): fills 100%. In drill-in the three panes split
+       2fr : 2fr : 1fr  (list 40% / detail 40% / activity 20%). */
+    width: 2fr;
+    height: 100%;
+}
+
+#detail-pane {
+    width: 2fr;
+    height: 100%;
+    border: round $accent;
+    padding: 0 1;
+}
+
+#activity-pane {
+    width: 1fr;
+    height: 100%;
+    border: round $panel-lighten-2;
+    padding: 0 1;
+    margin: 0 0 0 1;
+}
+
+#activity-header { text-style: bold; color: $accent; margin: 0 0 1 0; }
+#activity-list { height: 1fr; }
+
+.activity-item {
+    padding: 0 1;
+    margin: 0 0 1 0;
+    border-left: wide $panel-lighten-2;
+}
+
+.activity-item:hover {
+    background: $boost;
+    border-left: wide $accent;
+}
+
+#pane-title { color: $accent; }
+#pane-heading { margin: 1 0; }
+#pane-labels { color: $text-muted; }
+#pane-desc { margin: 1 0; color: $text-muted; }
+#pane-comments-header { margin: 1 0 0 0; text-style: bold; }
+#pane-comments { margin: 1 0 0 0; }
+
+.column {
+    /* Split the available width evenly across the currently-visible columns:
+       1fr each => fewer columns are wider, more columns are narrower, and
+       together they always fill the board's width. */
+    width: 1fr;
+    height: 100%;
+    border: round $panel-lighten-2;
+    margin: 0 1 0 0;
+    padding: 0 1;
+}
+
+.card {
+    /* Compact: one row per card, no border or gap between cards. */
+    height: 1;
+    padding: 0 1;
+    margin: 0;
+    color: $text;
+}
+
+.card.p0 { color: $error; }
+.card.p1 { color: $warning; }
+.card.p2 { color: $text; }
+.card.p3 { color: $text-muted; }
+.card.p4 { color: $text-disabled; }
+
+/* Focus rule comes AFTER the priority colors so it wins; `auto` picks a text
+   color that contrasts with the highlight background (fixes orange-on-orange). */
+.card.selected {
+    background: $boost;
+    text-style: bold;
+}
+
+.card:focus {
+    background: $accent;
+    color: auto;
+    text-style: bold;
+}
+
+#search {
+    dock: top;
+    height: 3;
+}
+
+/* modal screens */
+DetailScreen, CommentScreen {
+    align: center middle;
+}
+
+#detail-box {
+    width: 80%;
+    max-width: 120;
+    height: 80%;
+    border: round $accent;
+    background: $surface;
+    padding: 1 2;
+}
+
+#detail-title { color: $accent; }
+#detail-heading { margin: 1 0; }
+#detail-desc { margin: 1 0; color: $text-muted; }
+#detail-comments-header { margin: 1 0 0 0; text-style: bold; }
+
+.comment {
+    border: round $panel-lighten-1;
+    padding: 0 1;
+    margin: 1 0 0 0;
+}
+
+#confirm-box {
+    width: auto;
+    max-width: 80;
+    height: auto;
+    border: round $warning;
+    background: $surface;
+    padding: 1 2;
+}
+
+#confirm-message { margin: 0 0 1 0; }
+#confirm-hint { color: $text-muted; }
+
+#confirm-buttons {
+    height: 3;
+    align: right middle;
+}
+
+#confirm-buttons Button {
+    margin: 0 0 0 2;
+}
+
+#comment-box {
+    width: 70%;
+    max-width: 100;
+    height: 60%;
+    border: round $accent;
+    background: $surface;
+    padding: 1 2;
+}
+
+#comment-input {
+    height: 1fr;
+    margin: 1 0;
+}
+
+#comment-buttons {
+    height: 3;
+    align: right middle;
+}
+
+#comment-buttons Button {
+    margin: 0 0 0 2;
+}

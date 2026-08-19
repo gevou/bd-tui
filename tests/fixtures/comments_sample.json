@@ -1,0 +1,23 @@
+[
+  {
+    "id": "64b7a15a-7f97-511d-9f1d-b8659517b05f",
+    "issue_id": "gv-crl",
+    "author": "Ada Lovelace",
+    "text": "First comment: scoped the work and split it into two subtasks.",
+    "created_at": "2026-08-09T08:24:16Z"
+  },
+  {
+    "id": "c100ef3b-2a76-5c64-8963-f02dbb9ce1d9",
+    "issue_id": "gv-crl",
+    "author": "Alan Turing",
+    "text": "Second comment: pushed a draft branch and kicked off CI.",
+    "created_at": "2026-08-10T16:09:10Z"
+  },
+  {
+    "id": "8704881b-c7d7-5cc0-b7db-6807407897a4",
+    "issue_id": "gv-crl",
+    "author": "Grace Hopper",
+    "text": "Third comment: opened a PR, waiting on review.",
+    "created_at": "2026-08-10T16:22:30Z"
+  }
+]
