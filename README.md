@@ -24,8 +24,16 @@ _(Sample data.)_
 ## Requirements
 
 - Python **3.10+**
-- The **`bd`** CLI on your `PATH` (v1.2.2+ recommended — earlier versions have a
-  comment-read bug on the Dolt backend)
+- The **`bd`** CLI on your `PATH`
+
+### Compatibility
+
+Developed and tested against **beads `bd` v1.2.2** (from
+[`gastownhall/beads`](https://github.com/gastownhall/beads)). v1.2.2+ is
+recommended: earlier versions (≤ 0.60) have a Dolt-backend bug where
+`bd comments … --json` fails, which would break the detail and activity panes.
+bd-tui only uses stable `bd` subcommands (`list`, `comments`, `update`, `close`),
+so newer 1.x releases are expected to work too.
 
 ## Install
 
