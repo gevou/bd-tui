@@ -243,6 +243,96 @@ async def test_f_drills_into_subtree_and_escape_clears():
         assert len(app.query(Card)) == 3  # restored
 
 
+@pytest.mark.asyncio
+async def test_active_child_renders_as_real_card_under_dimmed_context_row():
+    # The in_progress column looks like the open tree: a dimmed context row for
+    # the open parent, with the active child a real (focusable) card beneath it.
+    from beads_tui.widgets import ContextRow
+    issues = [mk("gv-69z", status="open"),
+              mk("gv-69z.2", status="in_progress", parent="gv-69z")]
+    app = app_with(issues)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        # exactly one real card per issue -> no duplication
+        assert sorted(c.issue.id for c in app.query(Card)) == ["gv-69z", "gv-69z.2"]
+        # the parent's real card lives in the open column
+        ip = next(c for c in app.query(Column) if c.title == "in_progress")
+        op = next(c for c in app.query(Column) if c.title == "open")
+        assert [c.issue.id for c in op.cards] == ["gv-69z"]
+        # in_progress column has the child as its only real card...
+        assert [c.issue.id for c in ip.cards] == ["gv-69z.2"]
+        # ...beneath a dimmed context row for the open parent
+        ctx = ip.query(ContextRow)
+        assert [r.issue.id for r in ctx] == ["gv-69z"]
+        assert ctx.first().issue.status == "open"
+
+
+@pytest.mark.asyncio
+async def test_context_row_renders_like_a_card_only_dimmed():
+    # The context ancestor uses the SAME card line (status glyph, id, priority,
+    # title) as the open column — visually identical except for the dim style.
+    from beads_tui.widgets import ContextRow, Card
+    issues = [mk("gv-69z", status="open", title="parent title"),
+              mk("gv-69z.2", status="in_progress", parent="gv-69z")]
+    app = app_with(issues)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        ctx = app.query(ContextRow).first()
+        open_card = next(c for c in app.query(Card) if c.issue.id == "gv-69z")
+        # identical rendered line to the parent's real card in the open column
+        assert str(ctx.render()) == str(open_card.render())
+        assert ctx.has_class("context-row")  # dimming is applied via CSS class
+
+
+@pytest.mark.asyncio
+async def test_context_row_is_not_counted_in_column_badge():
+    issues = [mk("gv-69z", status="open"),
+              mk("gv-69z.2", status="in_progress", parent="gv-69z")]
+    app = app_with(issues)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        ip = next(c for c in app.query(Column) if c.title == "in_progress")
+        assert ip.count == 1                       # the real card only
+        assert ip.border_title == "in_progress (1)"
+
+
+@pytest.mark.asyncio
+async def test_context_row_is_not_focusable_and_nav_skips_it():
+    from beads_tui.widgets import ContextRow
+    issues = [mk("gv-69z", status="open"),
+              mk("gv-69z.2", status="in_progress", parent="gv-69z")]
+    app = app_with(issues)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        row = app.query(ContextRow).first()
+        assert row.can_focus is False
+        # context rows are not part of the navigation grid
+        assert all(not isinstance(c, ContextRow) for col in app.grid for c in col)
+
+
+@pytest.mark.asyncio
+async def test_drill_in_renders_each_real_issue_once_with_context_row():
+    from beads_tui.widgets import ContextRow
+    issues = [mk("gv-69z", status="open"),
+              mk("gv-69z.1", status="in_progress", parent="gv-69z"),
+              mk("gv-69z.2", status="in_progress", parent="gv-69z"),
+              mk("other", status="open")]
+    app = app_with(issues)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        root = next(c for c in app.query(Card) if c.issue.id == "gv-69z")
+        root.focus()
+        await pilot.pause()
+        await pilot.press("f")  # drill in
+        await pilot.pause()
+        # every real issue's card appears exactly once
+        assert sorted(c.issue.id for c in app.query(Card)) == [
+            "gv-69z", "gv-69z.1", "gv-69z.2"]
+        ip = next(c for c in app.query(Column) if c.title == "in_progress")
+        assert [c.issue.id for c in ip.cards] == ["gv-69z.1", "gv-69z.2"]
+        assert [r.issue.id for r in ip.query(ContextRow)] == ["gv-69z"]  # one context row
+
+
 async def _focus(app, pilot, issue_id):
     card = next(c for c in app.query(Card) if c.issue.id == issue_id)
     card.focus()

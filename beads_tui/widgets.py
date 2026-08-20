@@ -28,6 +28,21 @@ def _fmt_estimate(minutes) -> str:
     return f"  ~{minutes}m"
 
 
+def card_line(issue: Issue, indent: int = 0, selected: bool = False) -> str:
+    """The single-line rendering of an issue on the board.
+
+    Shared by ``Card`` and ``ContextRow`` so a dimmed context ancestor is
+    visually identical to a real card (same glyph, id, priority, title, indent),
+    differing only by the dim CSS class."""
+    icon = STATUS_ICONS.get(issue.status, "?")
+    pad = "  " * indent
+    mark = "◉ " if selected else "  "  # 2-col selection gutter
+    labels = f"  [{', '.join(issue.labels)}]" if issue.labels else ""
+    title = issue.title if len(issue.title) <= 52 else issue.title[:51] + "…"
+    return (f"{mark}{pad}{icon} {issue.id}  P{issue.priority}  "
+            f"{title}{_fmt_estimate(issue.estimated_minutes)}{labels}")
+
+
 class Card(Static):
     """A single focusable issue card."""
 
@@ -72,28 +87,49 @@ class Card(Static):
         self.add_class(PRIORITY_CLASS.get(issue.priority, "p2"))
 
     def render(self):
-        i = self.issue
-        icon = STATUS_ICONS.get(i.status, "?")
-        pad = "  " * self.indent
-        mark = "◉ " if self.has_class("selected") else "  "  # 2-col selection gutter
-        labels = f"  [{', '.join(i.labels)}]" if i.labels else ""
-        title = i.title if len(i.title) <= 52 else i.title[:51] + "…"
-        return f"{mark}{pad}{icon} {i.id}  P{i.priority}  {title}{_fmt_estimate(i.estimated_minutes)}{labels}"
+        return card_line(self.issue, self.indent, self.has_class("selected"))
+
+
+class ContextRow(Static):
+    """A dimmed, non-interactive ancestor row in an active-status column.
+
+    Renders with the SAME ``card_line`` as a real card so the active-status
+    column reads as a tree visually identical to ``open`` — the only difference
+    is the dim (``context-row``) style. It gives active child cards their parent
+    context without being a real card: not focusable, not part of the navigation
+    grid, and not counted in the column's ticket total.
+    """
+
+    can_focus = False
+
+    def __init__(self, issue: Issue, indent: int = 0):
+        super().__init__(classes="card context-row")
+        self.issue = issue
+        self.indent = indent
+
+    def render(self):
+        return card_line(self.issue, self.indent)
 
 
 class Column(VerticalScroll):
-    """A kanban column: a titled, scrollable stack of cards."""
+    """A kanban column: a titled, scrollable stack of rows.
 
-    def __init__(self, title: str, cards: list[Card], col_index: int):
+    ``rows`` may interleave real ``Card`` widgets with dimmed ``ContextRow``
+    ancestor headers. ``cards`` exposes just the real cards (for navigation and
+    the ticket-count badge); context rows are display-only.
+    """
+
+    def __init__(self, title: str, rows: "list[Card | ContextRow]", col_index: int):
         super().__init__(classes="column")
         self.title = title
-        self.cards = cards
-        self.count = len(cards)
+        self.rows = rows
+        self.cards = [r for r in rows if isinstance(r, Card)]
+        self.count = len(self.cards)
         self.col_index = col_index
         self.border_title = f"{title} ({self.count})"
 
     def compose(self):
-        yield from self.cards
+        yield from self.rows
 
 
 class DetailPane(VerticalScroll):

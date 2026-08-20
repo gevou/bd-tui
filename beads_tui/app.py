@@ -29,9 +29,8 @@ from beads_tui.mentions import (
 from beads_tui.model import (
     Filters,
     apply_filters,
-    children_map,
+    build_columns,
     comments_newest_first,
-    group_issues,
     has_relations,
     latest_comments,
     next_dimension,
@@ -44,6 +43,7 @@ from beads_tui.widgets import (
     STATUS_ICONS,
     Card,
     Column,
+    ContextRow,
     DetailPane,
 )
 
@@ -316,23 +316,26 @@ class BoardApp(App):
         await board.remove_children()
 
         visible = apply_filters(self.issues, self.filters)
-        columns = group_issues(visible, self.dimension)
-        # Nest only children that are themselves visible (consistent with filters).
-        cmap = children_map(visible)
+        # Full row layout per column: real cards (with nesting) plus, for active
+        # status columns, dimmed context-ancestor rows (see model.build_columns).
+        # all_issues resolves context parents (e.g. a closed parent) filtered out.
+        columns = build_columns(visible, self.dimension, self.issues)
 
         self.grid = []
         built: list[Column] = []
-        for ci, (title, items) in enumerate(columns.items()):
+        for ci, (title, rows) in enumerate(columns.items()):
+            widgets: "list[Card | ContextRow]" = []
             cards: list[Card] = []
-            row = 0
-            for issue in items:
-                cards.append(Card(issue, ci, row))
-                row += 1
-                for kid in cmap.get(issue.id, []):
-                    cards.append(Card(kid, ci, row, indent=1))
-                    row += 1
+            for r in rows:
+                if r.is_context:
+                    widgets.append(ContextRow(r.issue, r.indent))
+                else:
+                    # row_index indexes into self.grid[ci] (cards only) for nav.
+                    card = Card(r.issue, ci, len(cards), indent=r.indent)
+                    widgets.append(card)
+                    cards.append(card)
             self.grid.append(cards)
-            built.append(Column(title, cards, ci))
+            built.append(Column(title, widgets, ci))
 
         if built:
             await board.mount(*built)

@@ -108,6 +108,13 @@
 .card.p3 { color: $text-muted; }
 .card.p4 { color: $text-disabled; }
 
+/* Dimmed, non-interactive ancestor row in an active-status column: gives its
+   nested active cards their parent context without reading as a real card. */
+.card.context-row {
+    color: $text-disabled;
+    text-style: italic;
+}
+
 /* Focus rule comes AFTER the priority colors so it wins; `auto` picks a text
    color that contrasts with the highlight background (fixes orange-on-orange). */
 .card.selected {
