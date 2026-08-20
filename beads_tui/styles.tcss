@@ -19,7 +19,10 @@
 }
 
 #activity-pane {
-    width: 1fr;
+    /* Fixed 20% width so the feed is the SAME (narrow, drill-in) size in every
+       view — it must not widen when the detail pane is hidden (non-drilled).
+       board + detail split the remaining 80%. */
+    width: 20%;
     height: 100%;
     border: round $panel-lighten-2;
     padding: 0 1;
@@ -29,15 +32,48 @@
 #activity-header { text-style: bold; color: $accent; margin: 0 0 1 0; }
 #activity-list { height: 1fr; }
 
+.activity-empty { padding: 0 1; color: $text-muted; }
+
 .activity-item {
-    padding: 0 1;
+    /* auto height so the multi-line body wraps instead of truncating. No side
+       border — messages are separated by their colored header line instead. */
+    height: auto;
     margin: 0 0 1 0;
-    border-left: wide $panel-lighten-2;
 }
 
-.activity-item:hover {
+/* Header/meta line: a subtle background bar on EVERY message so the start of
+   each is obvious (general separation, not just mentions). */
+.activity-line {
     background: $boost;
-    border-left: wide $accent;
+    color: $text-muted;
+    text-style: bold;
+    padding: 0 1;
+}
+
+.activity-body { padding: 0 1; color: $text; }
+
+/* Read @mention rows: dimmed body, accent header. */
+.activity-item.mention .activity-line { color: $accent; }
+.activity-item.mention .activity-body { color: $text-muted; }
+
+/* Unread @mention rows: ● + bold body + a stronger warning header accent. */
+.activity-item.mention.unread .activity-line {
+    background: $warning-muted;
+    color: $warning;
+}
+.activity-item.mention.unread .activity-body {
+    color: $text;
+    text-style: bold;
+}
+
+.activity-item:hover .activity-line { background: $accent 30%; }
+
+/* Focus highlights the whole row. */
+.activity-item:focus .activity-line,
+.activity-item:focus .activity-body {
+    background: $accent;
+    color: auto;
+    text-style: bold;
 }
 
 #pane-title { color: $accent; }

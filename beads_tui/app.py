@@ -20,6 +20,12 @@ from beads_tui.data import (
     format_timestamp,
     is_db_open_error,
 )
+from beads_tui.mentions import (
+    ActivityEntry,
+    MentionsUnavailable,
+    annotate_activity,
+    load_rbc,
+)
 from beads_tui.model import (
     Filters,
     apply_filters,
@@ -32,9 +38,20 @@ from beads_tui.model import (
     related_ids,
     subtree_ids,
 )
-from beads_tui.widgets import ActivityPane, STATUS_ICONS, Card, Column, DetailPane
+from beads_tui.widgets import (
+    ActivityItem,
+    ActivityPane,
+    STATUS_ICONS,
+    Card,
+    Column,
+    DetailPane,
+)
 
 CSS_PATH = Path(__file__).parent / "styles.tcss"
+
+# How many rows the "all" activity feed shows (mentions/badge are computed over
+# the full fetched set; only the plain feed is capped for readability).
+ACTIVITY_DISPLAY_LIMIT = 50
 
 
 class CommentScreen(ModalScreen):
@@ -172,6 +189,7 @@ class BoardApp(App):
         ("X", "close_subtree", "Close subtree"),
         ("full_stop", "toggle_inactive", "Show/hide closed+deferred"),
         ("slash", "focus_search", "Search"),
+        ("m", "toggle_activity_filter", "Activity: all/@me"),
         ("enter", "open_detail", "Open"),
         ("escape", "clear_focus", "Clear drill-in"),
         ("left", "nav('left')", "←"),
@@ -199,6 +217,13 @@ class BoardApp(App):
         self.selected: set[str] = set()
         self._drill_root: Optional[str] = None
         self._last_card_id: Optional[str] = None
+        # Always-on activity feed + @me filter state (mention metadata comes
+        # from the shared A-phase module, loaded lazily).
+        self._rbc = None
+        self._mentions_error: Optional[str] = None
+        self._activity_mode: str = "all"  # "all" | "me"
+        self._activity_entries: list[ActivityEntry] = []
+        self._unread_mentions: int = 0
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -214,8 +239,8 @@ class BoardApp(App):
         search.display = False
         search.can_focus = False  # only focusable while actively searching
         self.query_one(DetailPane).display = False
-        self.query_one(ActivityPane).display = False
-        await self.reload()
+        self.query_one(ActivityPane).display = True  # always on now
+        await self.reload()  # rebuild_board kicks off the activity load + badge
         self._restore_focus()
         if self.poll_interval:
             self.set_interval(self.poll_interval, self.poll)
@@ -276,6 +301,8 @@ class BoardApp(App):
             return  # data unchanged -> skip rebuild so the poll doesn't flicker
         self._last_sig = sig
         await self.rebuild_board()
+        # The set of issues/comments may have changed -> refetch the feed.
+        self._refresh_activity()
 
     def poll(self) -> None:
         self.run_worker(self.reload(), exclusive=True)
@@ -310,16 +337,15 @@ class BoardApp(App):
         if built:
             await board.mount(*built)
 
-        # The live detail + activity panes are shown only while drilled in.
+        # The side detail pane still appears only while drilled in; the activity
+        # pane is always visible and follows the current board (visible issues,
+        # or the focus group when drilled).
         drilled = self.filters.focus_ids is not None
         self.query_one(DetailPane).display = drilled
-        self.query_one(ActivityPane).display = drilled
-        if drilled:
-            group = frozenset(self.filters.focus_ids)
-            ids = [i.id for i in self.issues
-                   if i.id in group and i.comment_count]
-            self.run_worker(self._load_activity(group, ids),
-                            exclusive=True, group="activity")
+        self.query_one(ActivityPane).display = True
+        # Re-render the feed for the new board (instant; the underlying comments
+        # are refetched separately by reload() only when the data changes).
+        await self._render_activity()
 
         # Re-apply selection markers to the freshly-built cards.
         self._apply_selection_classes()
@@ -493,6 +519,127 @@ class BoardApp(App):
         if isinstance(card, Card):
             self.open_detail_for(card.issue)
 
+    # --- activity feed + @me filter -----------------------------------------
+
+    def _ensure_rbc(self):
+        """Load + cache the shared A-phase mention module (or raise)."""
+        if self._rbc is None:
+            self._rbc = load_rbc()
+        return self._rbc
+
+    async def action_toggle_activity_filter(self) -> None:
+        """Toggle the activity feed between ``all`` (visible board) and ``@me``
+        (my involvement across the whole DB). Re-renders from the already-fetched
+        feed — no refetch, so it's instant."""
+        self._activity_mode = "me" if self._activity_mode == "all" else "all"
+        await self._render_activity()
+
+    def _activity_ids(self) -> list[str]:
+        """Every issue that has comments, whole-DB. The feed is always fetched at
+        this scope so the ``@me`` view and the unread badge are complete
+        regardless of the board's visibility/drill filters; the ``all`` view is
+        narrowed to the visible board at render time."""
+        return [i.id for i in self.issues if i.comment_count]
+
+    def _visible_activity_ids(self) -> "set[str]":
+        """Ids the ``all`` feed is limited to: the focus group when drilled, else
+        the currently-visible (post-filter) issues."""
+        if self.filters.focus_ids is not None:
+            return set(self.filters.focus_ids)
+        return {i.id for i in apply_filters(self.issues, self.filters)}
+
+    def _refresh_activity(self) -> None:
+        """Refetch the whole-DB comment feed on a worker (off the event loop)."""
+        ids = self._activity_ids()
+        self.run_worker(self._load_activity(ids, frozenset(ids)),
+                        exclusive=True, group="activity")
+
+    async def _load_activity(self, ids: list[str], token: "frozenset[str]") -> None:
+        """Aggregate comments across ``ids`` into the feed, tag mentions +
+        self-authored rows via the shared A module, refresh the badge, and
+        render. Blocking bd calls run off the event loop."""
+        comment_map: dict = {}
+        for iid in ids:
+            try:
+                comment_map[iid] = await asyncio.to_thread(self.client.fetch_comments, iid)
+            except BeadsError:
+                continue
+        if frozenset(self._activity_ids()) != token:
+            return  # issue set changed while loading -> drop this stale result
+        # limit high enough to cover the mention badge + @me completeness; the
+        # ``all`` display is capped separately in _render_activity.
+        flat = latest_comments(comment_map, limit=10_000)
+        try:
+            rbc = self._ensure_rbc()
+            self._mentions_error = None
+        except MentionsUnavailable as exc:
+            rbc = None
+            self._mentions_error = str(exc)
+        if rbc is not None:
+            self._activity_entries = annotate_activity(rbc, flat)
+        else:
+            self._activity_entries = [ActivityEntry(iid, c) for iid, c in flat]
+        self._unread_mentions = sum(
+            1 for e in self._activity_entries if e.is_mention and e.unread)
+        self.refresh_mention_badge()
+        await self._render_activity()
+
+    async def _render_activity(self) -> None:
+        """Render the fetched feed into the pane, applying the current filter.
+
+        ``@me`` shows my involvement (mentions ∪ my own comments) across the
+        whole DB; ``all`` mirrors the visible board.
+        """
+        if self._activity_mode == "me":
+            entries = [e for e in self._activity_entries if e.involves_me]
+        else:
+            visible = self._visible_activity_ids()
+            entries = [e for e in self._activity_entries
+                       if e.issue_id in visible][:ACTIVITY_DISPLAY_LIMIT]
+        await self.query_one(ActivityPane).show(
+            entries, self._activity_mode, error=self._mentions_error)
+
+    def activate_activity(self, item: ActivityItem) -> None:
+        """Open a feed row's thread and, if it's an unread @mention, mark it read
+        as a side effect.
+
+        When drilled and the issue is on the board, mirror into the side
+        DetailPane; otherwise (non-drilled, or an off-board issue reached via the
+        whole-DB ``@me`` feed) open the thread as a modal.
+        """
+        issue_id = item.issue_id
+        on_board = any(c.issue.id == issue_id for cards in self.grid for c in cards)
+        if self.filters.focus_ids is not None and on_board:
+            self.focus_issue(issue_id)  # mirror into the side DetailPane
+        else:
+            issue = next((i for i in self.issues if i.id == issue_id), None)
+            if issue is not None:
+                self.open_detail_for(issue)  # modal thread view
+        entry = item.entry
+        if entry.is_mention and entry.unread:
+            self._mark_activity_read(entry.mention_key)
+            item.mark_read()
+
+    def _mark_activity_read(self, key: str) -> None:
+        """Persist a mention as read via the shared A functions and decrement the
+        badge. Only ever writes the local mention-state file — never beads."""
+        if self._rbc is not None:
+            try:
+                self._rbc.mark_read(key)
+            except OSError:
+                pass  # state-file write failure shouldn't break the UI
+        for entry in self._activity_entries:
+            if entry.mention_key == key:
+                entry.unread = False
+        self._unread_mentions = sum(
+            1 for e in self._activity_entries if e.is_mention and e.unread)
+        self.refresh_mention_badge()
+
+    def refresh_mention_badge(self) -> None:
+        """Show the unread-mention count in the app title (e.g. ``@you: 2``)."""
+        n = self._unread_mentions
+        self.title = f"beads-tui   @you: {n}" if n else "beads-tui"
+
     def on_card_focused(self, message: Card.Focused) -> None:
         # Remember the last card so a refresh can restore it even if focus later
         # drifts onto a scroll container (the detail/activity panes are focusable).
@@ -528,18 +675,6 @@ class BoardApp(App):
                 if card.issue.id == issue_id:
                     card.focus()
                     return
-
-    async def _load_activity(self, group: "frozenset[str]", ids: list[str]) -> None:
-        """Aggregate comments across the drilled-in group into the activity pane."""
-        comment_map: dict = {}
-        for iid in ids:
-            try:
-                comment_map[iid] = await asyncio.to_thread(self.client.fetch_comments, iid)
-            except BeadsError:
-                continue
-        if self.filters.focus_ids != group:
-            return  # user changed/left the drill-in group while we were loading
-        await self.query_one(ActivityPane).show(latest_comments(comment_map))
 
     def _nav_target(self, card: Card, direction: str) -> Optional[Card]:
         if not self.grid:

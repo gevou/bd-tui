@@ -1,11 +1,12 @@
 """Layer 3 widgets: Card and Column."""
 from __future__ import annotations
 
-from textual.containers import VerticalScroll
+from textual.containers import Vertical, VerticalScroll
 from textual.message import Message
 from textual.widgets import Static
 
 from beads_tui.data import Comment, Issue, format_timestamp
+from beads_tui.mentions import ActivityEntry
 from beads_tui.model import comments_newest_first
 
 STATUS_ICONS = {
@@ -140,40 +141,105 @@ class DetailPane(VerticalScroll):
         self.query_one("#pane-comments", Static).update("\n\n".join(blocks))
 
 
-class ActivityItem(Static):
-    """A clickable row in the activity feed; clicking jumps focus to its issue."""
+# A comment longer than this is trimmed in the feed; the full text lives in the
+# thread you reach by activating the row.
+_ACTIVITY_PREVIEW_CHARS = 220
 
-    def __init__(self, issue_id: str, comment: Comment):
+
+class ActivityItem(Vertical):
+    """A focusable activity-feed row: a colored header/meta line above the body.
+
+    The header line (issue-id · author · time) carries a distinct background so
+    every message's start is obvious. Activating the row (Enter when focused, or
+    a click) opens the bead's thread and, if it's an unread @mention, marks it
+    read. Unread mentions still stand out via the ``●`` marker + bold + a
+    stronger (warning) header accent; read mentions and plain rows use the
+    normal header accent.
+    """
+
+    can_focus = True
+
+    BINDINGS = [("enter", "activate", "Open")]
+
+    def __init__(self, entry: ActivityEntry):
         super().__init__(classes="activity-item")
-        self.issue_id = issue_id
-        self.comment = comment
+        self.entry = entry
+        self.issue_id = entry.issue_id
+        self.comment = entry.comment
+        if entry.is_mention:
+            self.add_class("mention")
+        self.set_class(entry.is_mention and entry.unread, "unread")
 
-    def render(self):
+    def compose(self):
+        yield Static(self._header_line(), classes="activity-line", markup=False)
+        yield Static(self._body_text(), classes="activity-body", markup=False)
+
+    def _header_line(self) -> str:
         c = self.comment
+        marker = "● " if self.has_class("unread") else ""
         when = format_timestamp(c.created_at)
-        snippet = " ".join(c.text.split())
-        if len(snippet) > 64:
-            snippet = snippet[:63] + "…"
-        return f"{when}  [b]{self.issue_id}[/b]\n{c.author}: {snippet}"
+        return f"{marker}{self.issue_id}  ·  {c.author}  ·  {when}"
+
+    def _body_text(self) -> str:
+        # Whitespace-normalised but NOT collapsed to one line — the pane wraps it
+        # so a fuller preview is visible without opening the thread.
+        text = " ".join((self.comment.text or "").split())
+        if len(text) > _ACTIVITY_PREVIEW_CHARS:
+            text = text[: _ACTIVITY_PREVIEW_CHARS - 1] + "…"
+        return text
+
+    def mark_read(self) -> None:
+        """Flip this row to the read style (state persistence is the app's job)."""
+        self.entry.unread = False
+        self.set_class(False, "unread")
+        # Re-render the header so the ● marker disappears with the unread class.
+        self.query_one(".activity-line", Static).update(self._header_line())
+        self.refresh()
+
+    def action_activate(self) -> None:
+        self.app.activate_activity(self)
 
     def on_click(self) -> None:
-        self.app.focus_issue(self.issue_id)
+        self.focus()
+        self.app.activate_activity(self)
 
 
 class ActivityPane(VerticalScroll):
-    """Right-most pane in drill-in: latest comments across the focused group."""
+    """Always-on right-hand feed of recent activity across the visible board.
+
+    A header shows the current filter — ``RECENT ACTIVITY   [ all | @me ]`` —
+    where ``@me`` narrows the feed to @mentions of George.
+    """
 
     def __init__(self):
         super().__init__(id="activity-pane")
 
     def compose(self):
-        yield Static("Recent activity", id="activity-header")
+        # markup disabled so the literal [ … ] header brackets aren't parsed as
+        # Rich console markup.
+        yield Static(self.header_text("all"), id="activity-header", markup=False)
         yield VerticalScroll(id="activity-list")
 
-    async def show(self, entries: "list[tuple[str, Comment]]") -> None:
+    @staticmethod
+    def header_text(mode: str) -> str:
+        # Active filter is wrapped in guillemets (‹ ›); avoids Rich markup tags.
+        all_s = "‹all›" if mode == "all" else "all"
+        me_s = "‹@me›" if mode == "me" else "@me"
+        return f"RECENT ACTIVITY   [ {all_s} | {me_s} ]"
+
+    async def show(
+        self, entries: "list[ActivityEntry]", mode: str = "all",
+        error: "str | None" = None,
+    ) -> None:
+        self.query_one("#activity-header", Static).update(self.header_text(mode))
         box = self.query_one("#activity-list", VerticalScroll)
         await box.remove_children()
-        if not entries:
-            await box.mount(Static("(no comments in this group)", classes="activity-item"))
+        if mode == "me" and error:
+            await box.mount(
+                Static(f"[b]@me unavailable:[/b] {error}", classes="activity-empty"))
             return
-        await box.mount(*[ActivityItem(iid, c) for iid, c in entries])
+        if not entries:
+            empty = "(no @mentions in view)" if mode == "me" else "(no recent activity)"
+            await box.mount(Static(empty, classes="activity-empty"))
+            return
+        await box.mount(*[ActivityItem(e) for e in entries])

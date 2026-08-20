@@ -418,13 +418,14 @@ async def test_escape_clears_selection_before_drillin():
 
 
 @pytest.mark.asyncio
-async def test_activity_pane_hidden_outside_drill_in_visible_inside():
+async def test_activity_pane_visible_in_all_views():
+    # The activity feed is always on now (both non-drilled and drilled).
     from beads_tui.widgets import ActivityPane
     issues = [mk("P", status="open"), mk("c1", status="open", parent="P")]
     app = app_with(issues)
     async with app.run_test() as pilot:
         await pilot.pause()
-        assert app.query_one(ActivityPane).display is False
+        assert app.query_one(ActivityPane).display is True
         await _focus(app, pilot, "P")
         await pilot.press("f")
         await pilot.pause()
