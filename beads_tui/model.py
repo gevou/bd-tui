@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import re
 from collections import OrderedDict, defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Optional
 
 from beads_tui.data import Comment, Issue
 
@@ -38,6 +40,237 @@ PROMOTE_STATUSES = {"in_progress", "blocked"}
 
 UNLABELED = "(unlabeled)"
 RETRO_ONLY = "(retro-only)"
+
+HUB_STATES = {
+    "needs_user",
+    "blocked",
+    "active",
+    "waiting_agent",
+    "waiting_ci",
+    "parked",
+}
+HUB_STATE_ORDER = {
+    "needs_user": 0,
+    "blocked": 1,
+    "active": 2,
+    "waiting_agent": 3,
+    "waiting_ci": 4,
+    "parked": 5,
+}
+
+
+@dataclass(frozen=True)
+class HubItem:
+    """One human-level thread in the dedicated Hub dashboard."""
+
+    issue: Issue
+    state: str
+    summary: str
+    next_action: str
+    waiting_on: str = ""
+    owner: str = ""
+    prs: tuple[str, ...] = ()
+    last_material_at: str = ""
+    age: str = ""
+
+
+def _clean_one_line(value: object) -> str:
+    return " ".join(str(value or "").split())
+
+
+def _first_sentence(value: str, limit: int = 150) -> str:
+    text = _clean_one_line(value)
+    if not text:
+        return ""
+    match = re.search(r"(?<=[.!?])\s", text)
+    sentence = text[: match.start() + 1] if match else text
+    if len(sentence) > limit:
+        sentence = sentence[: limit - 1].rstrip() + "…"
+    return sentence
+
+
+def _sentence_case(value: str) -> str:
+    return value[:1].upper() + value[1:] if value else value
+
+
+def _hub_state(issue: Issue) -> str:
+    configured = _clean_one_line(issue.metadata.get("hub_state"))
+    if configured in HUB_STATES:
+        return configured
+    if issue.status == "blocked":
+        return "blocked"
+    if issue.status in {"closed", "deferred"}:
+        return "parked"
+    return "active"
+
+
+def _hub_summary(issue: Issue) -> str:
+    configured = _clean_one_line(issue.metadata.get("hub_summary"))
+    if configured:
+        return configured
+    note_summary = _first_sentence(issue.notes)
+    if note_summary.lower().startswith(("next:", "next action:")):
+        note_summary = ""
+    return (
+        note_summary
+        or _first_sentence(issue.description)
+        or "No current summary recorded."
+    )
+
+
+def _hub_next_action(issue: Issue) -> str:
+    configured = _clean_one_line(issue.metadata.get("hub_next_action"))
+    if configured:
+        return configured
+    # Notes often contain a coordinator-authored "Next:" checkpoint. Prefer it
+    # over a generic fallback without requiring metadata adoption up front.
+    match = re.search(r"(?:^|\n)\s*Next(?: action)?\s*:\s*(.+)", issue.notes, re.I)
+    if match:
+        return _sentence_case(_first_sentence(match.group(1), limit=170))
+    sentences = [
+        _clean_one_line(part)
+        for part in re.split(r"(?<=[.!?])\s+", issue.notes)
+        if _clean_one_line(part)
+    ]
+    action_pattern = re.compile(
+        r"\b(must|needs? to|should|wait(?:s|ing)? for|restack|push|publish|"
+        r"approve|confirm|resolve|review|open)\b",
+        re.I,
+    )
+    for sentence in reversed(sentences):
+        if action_pattern.search(sentence):
+            return _first_sentence(sentence, limit=170)
+    if issue.status == "blocked":
+        return "Resolve the blocker recorded in this thread."
+    if issue.status in {"closed", "deferred"}:
+        return "No action while parked."
+    return "Open details to review the latest checkpoint."
+
+
+def _hub_prs(issue: Issue) -> tuple[str, ...]:
+    raw = issue.metadata.get("hub_prs")
+    if not raw:
+        for key in ("publication_prs", "pr_number", "github_pr", "pr"):
+            if issue.metadata.get(key):
+                raw = issue.metadata[key]
+                break
+    if isinstance(raw, (list, tuple, set)):
+        values = [str(value) for value in raw]
+    else:
+        values = re.findall(r"\d+", str(raw or ""))
+    return tuple(dict.fromkeys(values))
+
+
+def _timestamp_sort_value(iso: str) -> float:
+    if not iso:
+        return 0
+    try:
+        value = iso.replace("Z", "+00:00")
+        parsed = datetime.fromisoformat(value)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.timestamp()
+    except ValueError:
+        return 0
+
+
+def relative_age(iso: str, now: Optional[datetime] = None) -> str:
+    """Compact age for a material-update timestamp, safe for odd input."""
+    if not iso:
+        return ""
+    value = iso.strip()
+    if value.endswith("Z"):
+        value = value[:-1] + "+00:00"
+    try:
+        changed = datetime.fromisoformat(value)
+    except ValueError:
+        return iso
+    if changed.tzinfo is None:
+        changed = changed.replace(tzinfo=timezone.utc)
+    current = now or datetime.now(timezone.utc)
+    seconds = max(0, int((current - changed).total_seconds()))
+    if seconds < 60:
+        return "now"
+    if seconds < 3600:
+        return f"{seconds // 60}m"
+    if seconds < 86_400:
+        return f"{seconds // 3600}h"
+    if seconds < 604_800:
+        return f"{seconds // 86_400}d"
+    return f"{seconds // 604_800}w"
+
+
+def hub_members(issues: list[Issue], root_id: str) -> list[Issue]:
+    """Return only direct ``tracks`` targets and direct children of ``root_id``.
+
+    This deliberately ignores descendants and every other dependency type. A
+    thread included through both mechanisms is returned once.
+    """
+    by_id = {issue.id: issue for issue in issues}
+    root = by_id.get(root_id)
+    if root is None:
+        return []
+    ids = {
+        dependency.get("depends_on_id")
+        for dependency in root.dependencies
+        if dependency.get("type") == "tracks"
+    }
+    ids.update(issue.id for issue in issues if issue.parent == root_id)
+    ids.discard(None)
+    return [issue for issue in issues if issue.id in ids]
+
+
+def build_hub_items(
+    issues: list[Issue], root_id: str, now: Optional[datetime] = None
+) -> list[HubItem]:
+    """Build and order the flat, presentation-ready Hub thread list."""
+    items = []
+    for issue in hub_members(issues, root_id):
+        material_at = _clean_one_line(
+            issue.metadata.get("hub_last_material_at") or issue.updated_at
+        )
+        items.append(
+            HubItem(
+                issue=issue,
+                state=_hub_state(issue),
+                summary=_hub_summary(issue),
+                next_action=_hub_next_action(issue),
+                waiting_on=_clean_one_line(issue.metadata.get("hub_waiting_on")),
+                owner=_clean_one_line(issue.assignee or issue.owner),
+                prs=_hub_prs(issue),
+                last_material_at=material_at,
+                age=relative_age(material_at, now),
+            )
+        )
+    items.sort(
+        key=lambda item: (
+            HUB_STATE_ORDER[item.state],
+            item.issue.priority,
+            -_timestamp_sort_value(item.last_material_at),
+            natural_key(item.issue.id),
+        )
+    )
+    return items
+
+
+def hub_summary(items: list[HubItem]) -> str:
+    """Human-readable status rollup for the Hub header."""
+    counts = {state: 0 for state in HUB_STATES}
+    for item in items:
+        counts[item.state] += 1
+    waiting = counts["waiting_agent"] + counts["waiting_ci"]
+    parts = []
+    if counts["needs_user"]:
+        parts.append(f"{counts['needs_user']} needs you")
+    if counts["blocked"]:
+        parts.append(f"{counts['blocked']} blocked")
+    if counts["active"]:
+        parts.append(f"{counts['active']} active")
+    if waiting:
+        parts.append(f"{waiting} waiting")
+    if counts["parked"]:
+        parts.append(f"{counts['parked']} parked")
+    return " · ".join(parts) if parts else "No open threads"
 
 
 @dataclass
@@ -239,7 +472,7 @@ def group_issues(issues: list[Issue], dimension: str) -> "OrderedDict[str, list[
         keys = sorted(buckets)
     elif dimension == "label":
         for i in top:
-            real = [l for l in i.labels if not l.startswith("retro:")]
+            real = [label for label in i.labels if not label.startswith("retro:")]
             if not i.labels:
                 buckets[UNLABELED].append(i)
             elif not real:

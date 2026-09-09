@@ -4,6 +4,80 @@
     height: 1fr;
 }
 
+/* Hub dashboard: Braun-inspired industrial restraint. A warm charcoal panel,
+   crisp rules, and one orange signal color keep dense status legible without
+   turning the view into a separate application. */
+#hub-shell {
+    height: 1fr;
+    padding: 0 2 1 2;
+    background: $surface;
+}
+
+.hub-header {
+    height: 4;
+    padding: 1 1 0 1;
+    margin: 0 0 1 0;
+    border-bottom: solid #6f675d;
+    background: $surface;
+    color: $text;
+}
+
+#hub-list {
+    height: 1fr;
+    padding: 0 1;
+    scrollbar-color: #d97726;
+    scrollbar-color-hover: #e4893b;
+    scrollbar-color-active: #f09a4d;
+    scrollbar-background: $surface;
+}
+
+.hub-card {
+    height: auto;
+    min-height: 5;
+    padding: 1 2;
+    margin: 0 0 1 0;
+    border-left: thick #6f675d;
+    background: $panel;
+    color: $text;
+}
+
+.hub-card.hub-needs_user,
+.hub-card.hub-active {
+    border-left: thick #d97726;
+}
+
+.hub-card.hub-blocked {
+    border-left: thick $error;
+}
+
+.hub-card.hub-waiting_agent,
+.hub-card.hub-waiting_ci {
+    border-left: thick #8f887e;
+}
+
+.hub-card.hub-parked {
+    border-left: thick #5f5a54;
+    opacity: 70%;
+}
+
+.hub-card:hover {
+    background: $panel-lighten-1;
+}
+
+.hub-card:focus {
+    background: #302b26;
+    color: $text;
+    border-left: thick #f09a4d;
+    text-style: none;
+}
+
+.hub-empty {
+    height: auto;
+    padding: 2;
+    color: $text-muted;
+    border: solid #6f675d;
+}
+
 #board {
     /* Alone (no drill-in): fills 100%. In drill-in the three panes split
        2fr : 2fr : 1fr  (list 40% / detail 40% / activity 20%). */
@@ -128,6 +202,19 @@
     text-style: bold;
 }
 
+/* Hub cards carry their own state signal; ordinary board priority/focus colors
+   must not repaint the entire control-panel row. */
+.card.hub-card {
+    color: $text;
+}
+
+.card.hub-card:focus {
+    background: #302b26;
+    color: $text;
+    border-left: thick #f09a4d;
+    text-style: none;
+}
+
 #search {
     dock: top;
     height: 3;
@@ -150,6 +237,8 @@ DetailScreen, CommentScreen {
 #detail-title { color: $accent; }
 #detail-heading { margin: 1 0; }
 #detail-desc { margin: 1 0; color: $text-muted; }
+.detail-section-heading { margin: 1 0 0 0; text-style: bold; color: $accent; }
+.detail-notes { margin: 0 0 1 0; color: $text-muted; }
 #detail-comments-header { margin: 1 0 0 0; text-style: bold; }
 
 .comment {

@@ -19,6 +19,10 @@ the latest comments (click an entry to jump to that ticket):
 
 ![bd-tui drill-in view](docs/demo-drillin.png)
 
+Hub dashboard — a flat, human-readable control panel for a coordinator Bead:
+
+![bd-tui Hub dashboard](docs/demo-hub.png)
+
 _(Sample data.)_
 
 ## Requirements
@@ -70,6 +74,7 @@ With a direct `uv`/`pipx` install, the same is controlled by their own settings
 bd-tui                    # columns grouped by status (default)
 bd-tui --group priority   # or: label
 bd-tui --poll 0           # disable the 15s auto-refresh
+bd-tui --hub gv-cwp       # focused coordinator Hub dashboard
 ```
 
 `bd-tui` finds your database the same way `bd` does (it walks up from the current
@@ -79,6 +84,37 @@ standard beads environment variable:
 ```bash
 export BEADS_DIR=/path/to/.beads
 ```
+
+### Hub dashboard
+
+`--hub` turns a Hub root into a quiet steering view instead of recursively
+rendering its execution graph. It includes only:
+
+- the root's direct `tracks` dependencies; and
+- the root's direct children.
+
+Each thread is shown once, ordered by steering urgency: needs you, blocked,
+active, waiting, then parked. `Enter` opens the normal issue detail, `/` filters
+the visible threads, and `r` refreshes from Beads. Board write actions are
+intentionally unavailable in Hub mode.
+
+Hub cards work without extra configuration by falling back to the Bead's status,
+notes, description, assignee, and update time. Coordinators can make the view
+more precise with optional issue metadata:
+
+```json
+{
+  "hub_state": "waiting_ci",
+  "hub_summary": "The exact head is pushed and focused checks pass.",
+  "hub_next_action": "Wait for CI, then request exact-head review.",
+  "hub_waiting_on": "Buildkite",
+  "hub_prs": [260168, 260169],
+  "hub_last_material_at": "2026-09-09T20:00:00Z"
+}
+```
+
+`hub_state` accepts `needs_user`, `blocked`, `active`, `waiting_agent`,
+`waiting_ci`, or `parked`.
 
 ## Keys
 

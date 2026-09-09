@@ -3,7 +3,7 @@ import pytest
 
 from beads_tui.data import Comment, Issue
 from beads_tui.app import BoardApp
-from beads_tui.widgets import Card, Column
+from beads_tui.widgets import Card, Column, HubCard, HubHeader
 
 
 class FakeClient:
@@ -40,6 +40,14 @@ def app_with(issues, comments=None, dimension="status"):
     # poll_interval=0 disables background polling for deterministic tests
     return BoardApp(client=FakeClient(issues, comments),
                     dimension=dimension, poll_interval=0)
+
+
+def hub_app_with(issues, comments=None):
+    return BoardApp(
+        client=FakeClient(issues, comments),
+        poll_interval=0,
+        hub_id="gv-cwp",
+    )
 
 
 @pytest.mark.asyncio
@@ -553,3 +561,65 @@ async def test_composing_a_comment_calls_add_comment():
         await pilot.press("ctrl+s")     # submit
         await pilot.pause()
         assert client.added == [("gv-1", "hello")]
+
+
+@pytest.mark.asyncio
+async def test_hub_renders_flat_ordered_cards_and_summary(hub_sample_json):
+    from beads_tui.data import parse_issues
+
+    app = hub_app_with(parse_issues(hub_sample_json))
+    async with app.run_test(size=(120, 38)) as pilot:
+        await pilot.pause()
+        assert [card.issue.id for card in app.query(HubCard)] == [
+            "voice-empty",
+            "gv-cwp.1",
+            "voice-unified",
+        ]
+        header = app.query_one(HubHeader)
+        assert "1 needs you · 1 blocked · 1 waiting" in str(header.render())
+        assert "gv-cwp.1.1" not in {
+            card.issue.id for card in app.query(HubCard)
+        }
+
+
+@pytest.mark.asyncio
+async def test_hub_keyboard_navigation_and_detail(hub_sample_json):
+    from beads_tui.data import parse_issues
+
+    app = hub_app_with(parse_issues(hub_sample_json))
+    async with app.run_test(size=(100, 30)) as pilot:
+        await pilot.pause()
+        assert isinstance(app.focused, HubCard)
+        assert app.focused.issue.id == "voice-empty"
+        await pilot.press("down")
+        await pilot.pause()
+        assert isinstance(app.focused, HubCard)
+        assert app.focused.issue.id == "gv-cwp.1"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.screen.issue.id == "gv-cwp.1"
+
+
+@pytest.mark.asyncio
+async def test_hub_remains_usable_in_narrow_terminal(hub_sample_json):
+    from beads_tui.data import parse_issues
+
+    app = hub_app_with(parse_issues(hub_sample_json))
+    async with app.run_test(size=(56, 22)) as pilot:
+        await pilot.pause()
+        cards = list(app.query(HubCard))
+        assert len(cards) == 3
+        assert all(card.region.width > 0 for card in cards)
+
+
+@pytest.mark.asyncio
+async def test_hub_search_matches_summary_and_next_action(hub_sample_json):
+    from beads_tui.data import parse_issues
+
+    app = hub_app_with(parse_issues(hub_sample_json))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        search = app.query_one("#search")
+        search.value = "restack"
+        await pilot.pause()
+        assert [card.issue.id for card in app.query(HubCard)] == ["voice-empty"]

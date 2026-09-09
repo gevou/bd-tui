@@ -1,13 +1,15 @@
 """Layer 3 widgets: Card and Column."""
 from __future__ import annotations
 
+from rich.text import Text
+from textual.binding import Binding
 from textual.containers import Vertical, VerticalScroll
 from textual.message import Message
 from textual.widgets import Static
 
 from beads_tui.data import Comment, Issue, format_timestamp
 from beads_tui.mentions import ActivityEntry
-from beads_tui.model import comments_newest_first
+from beads_tui.model import HubItem, comments_newest_first
 
 STATUS_ICONS = {
     "open": "○",         # ○
@@ -18,6 +20,14 @@ STATUS_ICONS = {
 }
 
 PRIORITY_CLASS = {0: "p0", 1: "p1", 2: "p2", 3: "p3", 4: "p4"}
+HUB_STATE_LABELS = {
+    "needs_user": "NEEDS YOU",
+    "blocked": "BLOCKED",
+    "active": "ACTIVE",
+    "waiting_agent": "WAITING · AGENT",
+    "waiting_ci": "WAITING · CI",
+    "parked": "PARKED",
+}
 
 
 def _fmt_estimate(minutes) -> str:
@@ -61,10 +71,10 @@ class Card(Static):
     # Bound on the card itself so they take precedence over the ancestor
     # VerticalScroll's scroll bindings — arrows move the highlight, never scroll.
     BINDINGS = [
-        ("up", "nav('up')", "↑"),
-        ("down", "nav('down')", "↓"),
-        ("left", "nav('left')", "←"),
-        ("right", "nav('right')", "→"),
+        Binding("up", "nav('up')", "↑", show=False),
+        Binding("down", "nav('down')", "↓", show=False),
+        Binding("left", "nav('left')", "←", show=False),
+        Binding("right", "nav('right')", "→", show=False),
     ]
 
     def action_nav(self, direction: str) -> None:
@@ -88,6 +98,73 @@ class Card(Static):
 
     def render(self):
         return card_line(self.issue, self.indent, self.has_class("selected"))
+
+
+class HubHeader(Static):
+    """Compact control-panel header for a Hub dashboard."""
+
+    def __init__(self, root_id: str):
+        super().__init__(classes="hub-header")
+        self.root_id = root_id
+
+    def show_summary(self, title: str, summary: str, total: int) -> None:
+        text = Text()
+        text.append("HUB  ", style="bold #d97726")
+        text.append(title.upper(), style="bold")
+        text.append(f"  ·  {self.root_id}", style="dim")
+        text.append("\n")
+        text.append(summary, style="bold")
+        text.append(f"  ·  {total} threads", style="dim")
+        self.update(text)
+
+
+class HubCard(Card):
+    """A two-to-four-line status card optimized for steering a Hub thread."""
+
+    BINDINGS = []
+
+    def __init__(self, item: HubItem, row_index: int):
+        super().__init__(item.issue, 0, row_index)
+        self.item = item
+        self.add_class("hub-card", f"hub-{item.state}")
+
+    def render(self):
+        item = self.item
+        issue = item.issue
+        text = Text()
+        text.append("▸ " if self.has_focus else "  ", style="bold #d97726")
+        text.append(f"P{issue.priority}  ", style="bold")
+        state_style = {
+            "needs_user": "bold #d97726",
+            "blocked": "bold #e05252",
+            "active": "bold #d97726",
+            "waiting_agent": "bold #a9a39a",
+            "waiting_ci": "bold #a9a39a",
+            "parked": "dim",
+        }[item.state]
+        text.append(f"{HUB_STATE_LABELS[item.state]:<15}", style=state_style)
+        text.append(f"  {issue.title}", style="bold")
+        text.append(f"  ·  {issue.id}", style="dim")
+        if item.age:
+            text.append(f"  ·  {item.age}", style="dim")
+
+        text.append("\n")
+        text.append(item.summary, style="#c8c2b8")
+        text.append("\n")
+        text.append("NEXT  ", style="bold #d97726")
+        text.append(item.next_action)
+
+        badges = []
+        if item.waiting_on:
+            badges.append(f"waiting: {item.waiting_on}")
+        if item.owner:
+            badges.append(f"owner: {item.owner}")
+        if item.prs:
+            badges.append("PR " + " · ".join(f"#{pr}" for pr in item.prs))
+        if badges:
+            text.append("\n")
+            text.append("  ".join(badges), style="dim")
+        return text
 
 
 class ContextRow(Static):

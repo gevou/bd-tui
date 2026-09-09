@@ -1,0 +1,110 @@
+[
+  {
+    "id": "gv-cwp",
+    "title": "Main conversation Hub queue",
+    "description": "Cross-epic inbox for the main coordinator conversation.",
+    "status": "open",
+    "priority": 0,
+    "issue_type": "epic",
+    "created_at": "2026-09-09T16:00:00Z",
+    "updated_at": "2026-09-09T16:00:00Z",
+    "metadata": {"membership_label": "hub:main"},
+    "labels": ["hub-root"],
+    "dependencies": [
+      {"issue_id": "gv-cwp", "depends_on_id": "voice-empty", "type": "tracks"},
+      {"issue_id": "gv-cwp", "depends_on_id": "voice-unified", "type": "tracks"},
+      {"issue_id": "gv-cwp", "depends_on_id": "ignored-blocker", "type": "blocks"}
+    ],
+    "comment_count": 0,
+    "parent": null
+  },
+  {
+    "id": "voice-empty",
+    "title": "Publish empty-chat Voice stack",
+    "description": "Coordinate the server and client increments.",
+    "notes": "Heads are locally verified. CI has not started.",
+    "status": "in_progress",
+    "priority": 0,
+    "issue_type": "task",
+    "assignee": "agent:implementation",
+    "created_at": "2026-09-09T16:01:00Z",
+    "updated_at": "2026-09-09T20:00:00Z",
+    "metadata": {
+      "hub_state": "needs_user",
+      "hub_summary": "Both increments are verified locally and ready to publish.",
+      "hub_next_action": "Approve the server push, then restack the client.",
+      "hub_prs": [260168, 260169],
+      "hub_last_material_at": "2026-09-09T20:00:00Z"
+    },
+    "dependencies": [],
+    "comment_count": 1,
+    "parent": null
+  },
+  {
+    "id": "voice-unified",
+    "title": "Publish Unified Voice tools",
+    "description": "Publish the three-PR Unified stack.",
+    "notes": "Next: wait for the exact-head review.",
+    "status": "open",
+    "priority": 1,
+    "issue_type": "task",
+    "owner": "george@example.com",
+    "created_at": "2026-09-09T16:02:00Z",
+    "updated_at": "2026-09-09T19:00:00Z",
+    "metadata": {
+      "hub_state": "waiting_agent",
+      "hub_waiting_on": "independent review",
+      "publication_prs": "260140,260176,260491"
+    },
+    "dependencies": [],
+    "comment_count": 0,
+    "parent": null
+  },
+  {
+    "id": "gv-cwp.1",
+    "title": "Settle legal wording",
+    "description": "Confirm the applicable terms link.",
+    "notes": "",
+    "status": "blocked",
+    "priority": 1,
+    "issue_type": "task",
+    "created_at": "2026-09-09T16:03:00Z",
+    "updated_at": "2026-09-09T18:00:00Z",
+    "metadata": {},
+    "dependencies": [
+      {"issue_id": "gv-cwp.1", "depends_on_id": "gv-cwp", "type": "parent-child"}
+    ],
+    "comment_count": 0,
+    "parent": "gv-cwp"
+  },
+  {
+    "id": "gv-cwp.1.1",
+    "title": "Private legal subtask",
+    "description": "This descendant must never appear in the Hub overview.",
+    "status": "in_progress",
+    "priority": 0,
+    "issue_type": "task",
+    "created_at": "2026-09-09T16:04:00Z",
+    "updated_at": "2026-09-09T21:00:00Z",
+    "metadata": {"hub_state": "active"},
+    "dependencies": [
+      {"issue_id": "gv-cwp.1.1", "depends_on_id": "gv-cwp.1", "type": "parent-child"}
+    ],
+    "comment_count": 0,
+    "parent": "gv-cwp.1"
+  },
+  {
+    "id": "ignored-blocker",
+    "title": "Unrelated blocking dependency",
+    "description": "A non-tracks dependency is not Hub membership.",
+    "status": "blocked",
+    "priority": 0,
+    "issue_type": "task",
+    "created_at": "2026-09-09T16:05:00Z",
+    "updated_at": "2026-09-09T22:00:00Z",
+    "metadata": {},
+    "dependencies": [],
+    "comment_count": 0,
+    "parent": null
+  }
+]

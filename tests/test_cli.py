@@ -16,3 +16,9 @@ def test_group_flag_accepts_valid_dimensions():
 def test_group_flag_rejects_unknown_dimension():
     with pytest.raises(SystemExit):
         parse_args(["--group", "bogus"])
+
+
+def test_hub_flag_accepts_root_id():
+    args = parse_args(["--hub", "gv-cwp", "--poll", "0"])
+    assert args.hub == "gv-cwp"
+    assert args.poll == 0

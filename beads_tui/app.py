@@ -8,7 +8,7 @@ from typing import Optional
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, VerticalScroll
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, Footer, Header, Input, Static, TextArea
 
@@ -29,9 +29,11 @@ from beads_tui.mentions import (
 from beads_tui.model import (
     Filters,
     apply_filters,
+    build_hub_items,
     build_columns,
     comments_newest_first,
     has_relations,
+    hub_summary,
     latest_comments,
     next_dimension,
     related_ids,
@@ -45,6 +47,8 @@ from beads_tui.widgets import (
     Column,
     ContextRow,
     DetailPane,
+    HubCard,
+    HubHeader,
 )
 
 CSS_PATH = Path(__file__).parent / "styles.tcss"
@@ -154,6 +158,9 @@ class DetailScreen(ModalScreen):
             if i.labels:
                 yield Static(f"labels: {', '.join(i.labels)}", classes="detail-meta")
             yield Static(i.description or "(no description)", id="detail-desc")
+            if i.notes:
+                yield Static("Latest notes", classes="detail-section-heading")
+                yield Static(i.notes, classes="detail-notes")
             header = f"Comments ({len(self.comments)}, newest first)" if self.comments \
                 else "Comments (0)"
             yield Static(header, id="detail-comments-header")
@@ -191,11 +198,11 @@ class BoardApp(App):
         ("slash", "focus_search", "Search"),
         ("m", "toggle_activity_filter", "Activity: all/@me"),
         ("enter", "open_detail", "Open"),
-        ("escape", "clear_focus", "Clear drill-in"),
-        ("left", "nav('left')", "←"),
-        ("right", "nav('right')", "→"),
-        ("up", "nav('up')", "↑"),
-        ("down", "nav('down')", "↓"),
+        ("escape", "clear_focus", "Clear"),
+        Binding("left", "nav('left')", "←", show=False),
+        Binding("right", "nav('right')", "→", show=False),
+        Binding("up", "nav('up')", "↑", show=False),
+        Binding("down", "nav('down')", "↓", show=False),
         Binding("shift+left", "select_nav('left')", "Select ←", show=False),
         Binding("shift+right", "select_nav('right')", "Select →", show=False),
         Binding("shift+up", "select_nav('up')", "Select ↑", show=False),
@@ -203,11 +210,17 @@ class BoardApp(App):
         ("q", "quit", "Quit"),
     ]
 
-    def __init__(self, client: Optional[BeadsClient] = None,
-                 dimension: str = "status", poll_interval: float = 15.0):
+    def __init__(
+        self,
+        client: Optional[BeadsClient] = None,
+        dimension: str = "status",
+        poll_interval: float = 15.0,
+        hub_id: Optional[str] = None,
+    ):
         super().__init__()
         self.client = client or BeadsClient()
         self.dimension = dimension
+        self.hub_id = hub_id
         self.filters = Filters()
         self.poll_interval = poll_interval
         self.issues: list[Issue] = []
@@ -228,18 +241,45 @@ class BoardApp(App):
     def compose(self) -> ComposeResult:
         yield Header()
         yield Input(placeholder="Search id, title, label…  (Esc to leave)", id="search")
-        with Horizontal(id="main"):
-            yield Horizontal(id="board")
-            yield DetailPane()
-            yield ActivityPane()
-        yield Footer()
+        if self.hub_id:
+            with Vertical(id="hub-shell"):
+                yield HubHeader(self.hub_id)
+                yield VerticalScroll(id="hub-list")
+        else:
+            with Horizontal(id="main"):
+                yield Horizontal(id="board")
+                yield DetailPane()
+                yield ActivityPane()
+            yield Footer()
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool:
+        """Hide board-only controls from the Hub footer and key map."""
+        if self.hub_id and action in {
+            "cycle_group",
+            "focus_subtree",
+            "defer_subtree",
+            "close_subtree",
+            "toggle_inactive",
+            "toggle_activity_filter",
+            "select_nav",
+        }:
+            return False
+        if (
+            self.hub_id
+            and action == "nav"
+            and parameters
+            and parameters[0] in {"left", "right"}
+        ):
+            return False
+        return True
 
     async def on_mount(self) -> None:
         search = self.query_one("#search", Input)
         search.display = False
         search.can_focus = False  # only focusable while actively searching
-        self.query_one(DetailPane).display = False
-        self.query_one(ActivityPane).display = True  # always on now
+        if not self.hub_id:
+            self.query_one(DetailPane).display = False
+            self.query_one(ActivityPane).display = True  # always on now
         await self.reload()  # rebuild_board kicks off the activity load + badge
         self._restore_focus()
         if self.poll_interval:
@@ -289,8 +329,20 @@ class BoardApp(App):
     def _signature(issues: list[Issue]) -> tuple:
         # Everything the board renders; if unchanged, there's nothing to redraw.
         return tuple(
-            (i.id, i.status, i.priority, i.title, i.comment_count,
-             tuple(i.labels), i.parent)
+            (
+                i.id,
+                i.status,
+                i.priority,
+                i.title,
+                i.description,
+                i.notes,
+                i.comment_count,
+                tuple(i.labels),
+                i.parent,
+                i.updated_at,
+                repr(sorted(i.metadata.items())),
+                repr(i.dependencies),
+            )
             for i in issues
         )
 
@@ -302,12 +354,16 @@ class BoardApp(App):
         self._last_sig = sig
         await self.rebuild_board()
         # The set of issues/comments may have changed -> refetch the feed.
-        self._refresh_activity()
+        if not self.hub_id:
+            self._refresh_activity()
 
     def poll(self) -> None:
         self.run_worker(self.reload(), exclusive=True)
 
     async def rebuild_board(self) -> None:
+        if self.hub_id:
+            await self.rebuild_hub()
+            return
         board = self.query_one("#board", Horizontal)
         # Restore to the last card the user was on, even if focus has since drifted
         # onto a scroll container (falls back to whatever card is focused now).
@@ -356,13 +412,65 @@ class BoardApp(App):
         # Keep the previously-focused card highlighted after a rebuild.
         self._restore_focus(prev_id)
 
+    async def rebuild_hub(self) -> None:
+        """Render the root's direct Hub members as one flat steering list."""
+        assert self.hub_id is not None
+        container = self.query_one("#hub-list", VerticalScroll)
+        prev = self.focused
+        prev_id = self._last_card_id or (
+            prev.issue.id if isinstance(prev, Card) else None
+        )
+        await container.remove_children()
+
+        root = next((issue for issue in self.issues if issue.id == self.hub_id), None)
+        items = build_hub_items(self.issues, self.hub_id)
+        query = self.filters.query.strip().lower()
+        if query:
+            items = [
+                item
+                for item in items
+                if query in item.issue.id.lower()
+                or query in item.issue.title.lower()
+                or query in item.summary.lower()
+                or query in item.next_action.lower()
+            ]
+
+        cards = [HubCard(item, index) for index, item in enumerate(items)]
+        self.grid = [cards] if cards else []
+        if cards:
+            await container.mount(*cards)
+        else:
+            message = (
+                f"Hub root {self.hub_id!r} was not found."
+                if root is None
+                else "No direct Hub threads match this view."
+            )
+            await container.mount(Static(message, classes="hub-empty"))
+
+        title = root.title if root is not None else "Unknown Hub"
+        all_items = build_hub_items(self.issues, self.hub_id)
+        self.query_one(HubHeader).show_summary(
+            title, hub_summary(all_items), len(all_items)
+        )
+        self.title = f"bd-tui · Hub {self.hub_id}"
+        self.sub_title = (
+            "↑/↓ steer · Enter details · / filter · Esc clear · r refresh · q quit"
+        )
+        self._restore_focus(prev_id)
+
     # --- actions ------------------------------------------------------------
 
     async def action_cycle_group(self) -> None:
+        if self.hub_id:
+            self.notify("Hub order is fixed by steering state, priority, and recency.")
+            return
         self.dimension = next_dimension(self.dimension)
         await self.rebuild_board()
 
     async def action_toggle_inactive(self) -> None:
+        if self.hub_id:
+            self.notify("Hub membership includes active, waiting, and parked threads.")
+            return
         self.filters.show_inactive = not self.filters.show_inactive
         await self.rebuild_board()
 
@@ -370,6 +478,9 @@ class BoardApp(App):
         await self.reload(force=True)
 
     async def action_focus_subtree(self) -> None:
+        if self.hub_id:
+            self.notify("Hub overview intentionally hides recursive task graphs.")
+            return
         card = self.focused
         if not isinstance(card, Card):
             return
@@ -382,6 +493,14 @@ class BoardApp(App):
         self._update_subtitle()
 
     async def action_clear_focus(self) -> None:
+        if self.hub_id:
+            search = self.query_one("#search", Input)
+            self.filters.query = ""
+            search.value = ""
+            search.display = False
+            search.can_focus = False
+            await self.rebuild_hub()
+            return
         # Esc clears a selection first, then (on a second press) exits drill-in.
         if self.selected:
             self._clear_selection()
@@ -427,6 +546,11 @@ class BoardApp(App):
             self._update_subtitle()
 
     def _update_subtitle(self) -> None:
+        if self.hub_id:
+            self.sub_title = (
+                "↑/↓ steer · Enter details · / filter · Esc clear · r refresh · q quit"
+            )
+            return
         parts = []
         if self.filters.focus_ids is not None and self._drill_root:
             parts.append(f"drill-in: {self._drill_root} — Esc to clear")
@@ -468,6 +592,9 @@ class BoardApp(App):
         self.push_screen(ConfirmScreen(f"{label} {len(targets)} issue(s)?"), after)
 
     def action_defer_subtree(self) -> None:
+        if self.hub_id:
+            self.notify("Hub mode is read-only; update the owning Bead directly.")
+            return
         roots = self._action_roots()
         if not roots:
             return
@@ -486,6 +613,9 @@ class BoardApp(App):
         self._confirm_and_apply(targets, "Defer", lambda t: self.client.set_status(t, "deferred"))
 
     def action_close_subtree(self) -> None:
+        if self.hub_id:
+            self.notify("Hub mode is read-only; update the owning Bead directly.")
+            return
         roots = self._action_roots()
         if not roots:
             return
@@ -534,6 +664,8 @@ class BoardApp(App):
         """Toggle the activity feed between ``all`` (visible board) and ``@me``
         (my involvement across the whole DB). Re-renders from the already-fetched
         feed — no refetch, so it's instant."""
+        if self.hub_id:
+            return
         self._activity_mode = "me" if self._activity_mode == "all" else "all"
         await self._render_activity()
 

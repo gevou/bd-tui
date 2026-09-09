@@ -1,15 +1,20 @@
 """Tests for the pure board model (Layer 2)."""
+from datetime import datetime, timezone
+
 from beads_tui.data import Comment, Issue
 from beads_tui.model import (
     DIMENSIONS,
     PROMOTE_STATUSES,
     Filters,
     apply_filters,
+    build_hub_items,
     build_columns,
     children_map,
     group_issues,
     comments_newest_first,
     has_relations,
+    hub_members,
+    hub_summary,
     latest_comments,
     natural_key,
     next_dimension,
@@ -416,6 +421,50 @@ def test_has_relations_true_only_when_more_than_self():
     issues = [mk("lonely"), mk("P"), mk("c1", parent="P")]
     assert has_relations(issues, "lonely") is False
     assert has_relations(issues, "P") is True
+
+
+# --- Hub dashboard --------------------------------------------------------
+
+def test_hub_members_are_direct_tracks_and_direct_children_only(hub_sample_json):
+    from beads_tui.data import parse_issues
+
+    issues = parse_issues(hub_sample_json)
+    member_ids = {i.id for i in hub_members(issues, "gv-cwp")}
+    assert member_ids == {"voice-empty", "voice-unified", "gv-cwp.1"}
+    assert "gv-cwp.1.1" not in member_ids
+    assert "ignored-blocker" not in member_ids
+
+
+def test_hub_items_use_metadata_and_graceful_fallbacks(hub_sample_json):
+    from beads_tui.data import parse_issues
+
+    now = datetime(2026, 9, 9, 22, 0, tzinfo=timezone.utc)
+    items = build_hub_items(parse_issues(hub_sample_json), "gv-cwp", now=now)
+    by_id = {item.issue.id: item for item in items}
+
+    empty = by_id["voice-empty"]
+    assert empty.state == "needs_user"
+    assert empty.summary == "Both increments are verified locally and ready to publish."
+    assert empty.next_action == "Approve the server push, then restack the client."
+    assert empty.prs == ("260168", "260169")
+    assert empty.age == "2h"
+
+    legal = by_id["gv-cwp.1"]
+    assert legal.state == "blocked"
+    assert legal.summary == "Confirm the applicable terms link."
+    assert legal.next_action == "Resolve the blocker recorded in this thread."
+
+
+def test_hub_items_order_for_steering_and_summary(hub_sample_json):
+    from beads_tui.data import parse_issues
+
+    items = build_hub_items(parse_issues(hub_sample_json), "gv-cwp")
+    assert [item.issue.id for item in items] == [
+        "voice-empty",
+        "gv-cwp.1",
+        "voice-unified",
+    ]
+    assert hub_summary(items) == "1 needs you · 1 blocked · 1 waiting"
 
 
 # --- focus filter ---------------------------------------------------------

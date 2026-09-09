@@ -25,6 +25,11 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         default=15.0,
         help="Auto-refresh interval in seconds (0 to disable). Default: 15.",
     )
+    parser.add_argument(
+        "--hub",
+        metavar="BEAD_ID",
+        help="Open a flat steering dashboard for a Hub root (for example gv-cwp).",
+    )
     return parser.parse_args(argv)
 
 
@@ -33,7 +38,11 @@ def main(argv: Optional[list[str]] = None) -> None:
     # Imported here so `parse_args` stays import-light for tests.
     from beads_tui.app import BoardApp
 
-    BoardApp(dimension=args.group, poll_interval=args.poll).run()
+    BoardApp(
+        dimension=args.group,
+        poll_interval=args.poll,
+        hub_id=args.hub,
+    ).run()
 
 
 if __name__ == "__main__":

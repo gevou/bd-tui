@@ -57,6 +57,8 @@ class Issue:
     id: str
     title: str = ""
     description: str = ""
+    acceptance_criteria: str = ""
+    notes: str = ""
     status: str = "open"
     priority: int = 2
     issue_type: str = "task"
@@ -70,6 +72,7 @@ class Issue:
     estimated_minutes: Optional[int] = None
     # Raw dependency records: [{"depends_on_id", "type", ...}, ...].
     dependencies: list[dict] = field(default_factory=list)
+    metadata: dict = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, d: dict) -> "Issue":
@@ -77,6 +80,8 @@ class Issue:
             id=d["id"],
             title=d.get("title", ""),
             description=d.get("description", "") or "",
+            acceptance_criteria=d.get("acceptance_criteria", "") or "",
+            notes=d.get("notes", "") or "",
             status=d.get("status", "open"),
             priority=d.get("priority", 2),
             issue_type=d.get("issue_type", "task"),
@@ -89,6 +94,7 @@ class Issue:
             updated_at=d.get("updated_at"),
             estimated_minutes=d.get("estimated_minutes"),
             dependencies=list(d.get("dependencies") or []),
+            metadata=dict(d.get("metadata") or {}),
         )
 
 

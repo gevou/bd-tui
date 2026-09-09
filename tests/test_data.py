@@ -1,6 +1,4 @@
 """Tests for the bd subprocess boundary (Layer 1)."""
-from dataclasses import replace
-
 import pytest
 
 from datetime import timedelta, timezone
@@ -60,6 +58,14 @@ def test_parse_issues_maps_fields(list_sample_json):
     assert epic.parent is None
     child = issues["gv-11929.4"]
     assert child.parent == "gv-11929"
+
+
+def test_parse_issues_preserves_hub_metadata_and_notes(hub_sample_json):
+    issues = {i.id: i for i in parse_issues(hub_sample_json)}
+    empty = issues["voice-empty"]
+    assert empty.notes == "Heads are locally verified. CI has not started."
+    assert empty.metadata["hub_state"] == "needs_user"
+    assert empty.metadata["hub_prs"] == [260168, 260169]
 
 
 def test_parse_issues_null_labels_becomes_empty_list(list_sample_json):

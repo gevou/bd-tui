@@ -27,5 +27,10 @@ def comments_empty_json() -> str:
 
 
 @pytest.fixture
+def hub_sample_json() -> str:
+    return (FIXTURES / "hub_sample.json").read_text()
+
+
+@pytest.fixture
 def list_sample(list_sample_json) -> list:
     return json.loads(list_sample_json)
