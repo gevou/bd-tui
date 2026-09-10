@@ -33,6 +33,8 @@
       "hub_state": "needs_user",
       "hub_summary": "Both increments are verified locally and ready to publish.",
       "hub_next_action": "Approve the server push, then restack the client.",
+      "agent_running": true,
+      "active_agent_name": "Curie",
       "hub_prs": [260168, 260169],
       "hub_last_material_at": "2026-09-09T20:00:00Z"
     },
@@ -54,6 +56,8 @@
     "metadata": {
       "hub_state": "waiting_agent",
       "hub_waiting_on": "independent review",
+      "agent_running": false,
+      "active_agent_name": "Stale Agent",
       "publication_prs": "260140,260176,260491"
     },
     "dependencies": [],

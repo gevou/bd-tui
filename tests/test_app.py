@@ -580,6 +580,22 @@ async def test_hub_renders_flat_ordered_cards_and_summary(hub_sample_json):
         assert "gv-cwp.1.1" not in {
             card.issue.id for card in app.query(HubCard)
         }
+        first_line = str(app.query(HubCard).first().render()).splitlines()[0]
+        assert "agent: Curie" in first_line
+        assert "Stale Agent" not in "\n".join(
+            str(card.render()) for card in app.query(HubCard)
+        )
+
+
+@pytest.mark.asyncio
+async def test_hub_cards_have_restrained_visual_spacing(hub_sample_json):
+    from beads_tui.data import parse_issues
+
+    app = hub_app_with(parse_issues(hub_sample_json))
+    async with app.run_test(size=(100, 40)) as pilot:
+        await pilot.pause()
+        cards = list(app.query(HubCard))
+        assert cards[0].styles.border_bottom[0] == "blank"
 
 
 @pytest.mark.asyncio

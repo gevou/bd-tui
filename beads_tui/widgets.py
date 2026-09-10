@@ -147,6 +147,8 @@ class HubCard(Card):
         text.append(f"  ·  {issue.id}", style="dim")
         if item.age:
             text.append(f"  ·  {item.age}", style="dim")
+        if item.agent:
+            text.append(f"  ·  agent: {item.agent}", style="bold #a9a39a")
 
         text.append("\n")
         text.append(item.summary, style="#c8c2b8")

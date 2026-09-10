@@ -444,6 +444,7 @@ def test_hub_items_use_metadata_and_graceful_fallbacks(hub_sample_json):
 
     empty = by_id["voice-empty"]
     assert empty.state == "needs_user"
+    assert empty.agent == "Curie"
     assert empty.summary == "Both increments are verified locally and ready to publish."
     assert empty.next_action == "Approve the server push, then restack the client."
     assert empty.prs == ("260168", "260169")
@@ -453,6 +454,27 @@ def test_hub_items_use_metadata_and_graceful_fallbacks(hub_sample_json):
     assert legal.state == "blocked"
     assert legal.summary == "Confirm the applicable terms link."
     assert legal.next_action == "Resolve the blocker recorded in this thread."
+
+    unified = by_id["voice-unified"]
+    assert unified.agent == ""
+
+
+def test_hub_agent_uses_name_and_id_fallbacks_only_while_running(hub_sample_json):
+    from beads_tui.data import parse_issues
+
+    issues = parse_issues(hub_sample_json)
+    empty = next(issue for issue in issues if issue.id == "voice-empty")
+
+    empty.metadata.pop("active_agent_name")
+    empty.metadata["active_agent_id"] = "01a08c57"
+    items = build_hub_items(issues, "gv-cwp")
+    assert next(item for item in items if item.issue.id == "voice-empty").agent == (
+        "01a08c57"
+    )
+
+    empty.metadata["agent_running"] = False
+    items = build_hub_items(issues, "gv-cwp")
+    assert next(item for item in items if item.issue.id == "voice-empty").agent == ""
 
 
 def test_hub_items_order_for_steering_and_summary(hub_sample_json):

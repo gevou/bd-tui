@@ -108,6 +108,8 @@ more precise with optional issue metadata:
   "hub_summary": "The exact head is pushed and focused checks pass.",
   "hub_next_action": "Wait for CI, then request exact-head review.",
   "hub_waiting_on": "Buildkite",
+  "agent_running": true,
+  "active_agent_name": "Curie",
   "hub_prs": [260168, 260169],
   "hub_last_material_at": "2026-09-09T20:00:00Z"
 }
@@ -115,6 +117,12 @@ more precise with optional issue metadata:
 
 `hub_state` accepts `needs_user`, `blocked`, `active`, `waiting_agent`,
 `waiting_ci`, or `parked`.
+
+When `agent_running` is true, Hub cards show the active subagent beside the
+first-row update age. The display name is read from `hub_agent`,
+`active_agent_name`, `agent_name`, or `subagent_name`, with recorded agent IDs
+as a final fallback. Agent metadata is hidden whenever `agent_running` is false
+or absent, so stale assignments are not presented as live work.
 
 ## Keys
 

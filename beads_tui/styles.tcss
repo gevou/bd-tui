@@ -37,6 +37,7 @@
     padding: 1 2;
     margin: 0 0 1 0;
     border-left: thick #6f675d;
+    border-bottom: blank $surface;
     background: $panel;
     color: $text;
 }

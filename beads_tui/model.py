@@ -69,6 +69,7 @@ class HubItem:
     next_action: str
     waiting_on: str = ""
     owner: str = ""
+    agent: str = ""
     prs: tuple[str, ...] = ()
     last_material_at: str = ""
     age: str = ""
@@ -115,6 +116,22 @@ def _hub_summary(issue: Issue) -> str:
         note_summary
         or _first_sentence(issue.description)
         or "No current summary recorded."
+    )
+
+
+def _hub_agent(issue: Issue) -> str:
+    running = issue.metadata.get("agent_running")
+    if isinstance(running, str):
+        running = running.strip().lower() in {"1", "true", "yes"}
+    if running is not True:
+        return ""
+    return _clean_one_line(
+        issue.metadata.get("hub_agent")
+        or issue.metadata.get("active_agent_name")
+        or issue.metadata.get("agent_name")
+        or issue.metadata.get("subagent_name")
+        or issue.metadata.get("active_agent_id")
+        or issue.metadata.get("cursor_agent_id")
     )
 
 
@@ -237,6 +254,7 @@ def build_hub_items(
                 next_action=_hub_next_action(issue),
                 waiting_on=_clean_one_line(issue.metadata.get("hub_waiting_on")),
                 owner=_clean_one_line(issue.assignee or issue.owner),
+                agent=_hub_agent(issue),
                 prs=_hub_prs(issue),
                 last_material_at=material_at,
                 age=relative_age(material_at, now),
